@@ -71,17 +71,47 @@ class NikePlus:
         time.sleep(1)
 
         response = json.loads(resp)
-        self.logger.debug("get_token: received response: {0}".format(pprint.pformat(response)))
+        self.logger.debug("get_token: received response: {0}".format(response))
+        
+        body = json.loads(response['body']) # double JSON encoded. seriously.
+        self.logger.debug("get_token: received response body: {0}".format(body))
+
+        if 'access_token' in body:
+            token = body['access_token']
+            expires_in = body['expires_in']
+        
+            self.logger.debug("Successfully got token: {0}, expires in: {1}".format(token, expires_in))
+            self.token = token
+            self.user = body["User"]
+            return token
+        elif 'serviceResponse' in body:
+            header = body['serviceResponse']['header']
+            self.logger.debug("get_token: received response header: {0}".format(header))
+            if header["success"] == 'false':
+                raise LoginError(header["errorCodes"])
+        else:
+            self.logger("Couldn't get token.")
+            return None
+
+    def get_day_activities(self, day):
+        """ Get the list of activities for the user, for the given day. """
+        url = "https://developer.nike.com/request/"        
+        body = "data=%7B%22method%22%3A%22GET%22%2C%22url%22%3A%22https%3A%2F%2Fapi.nike.com%2Fme%2Fsport%2Factivities%3Faccess_token%3D{0}%26offset%3D1%26count%3D1%26startDate%3D{1}%26endDate%3D{1}%22%2C%22headers%22%3A%7B%22appid%22%3A%22%25appid%25%22%2C%22Accept%22%3A%22application%2Fjson%22%7D%2C%22body%22%3A%22%22%2C%22environment%22%3A%22prod%22%7D".format(self.token, day)
+        req = urllib2.Request(url, body)
+        req.get_method = lambda: "POST"
+        f = self.opener.open(req)
+        resp = f.read()
+        time.sleep(1)
+        # self.logger.debug("get_day_activities: received resp: {0}".format(pprint.pformat(resp)))
+            
+        response = json.loads(resp)
+        # self.logger.debug("get_day_activities: received response: {0}".format(pprint.pformat(response)))
 
         body = json.loads(response['body']) # double JSON encoded. seriously.
-        self.logger.debug("get_token: received response body: {0}".format(pprint.pformat(body)))
+        # self.logger.debug("get_day_activities: received response body: {0}".format(pprint.pformat(body)))
 
-        token = body['access_token']
-        expires_in = body['expires_in']
-        
-        self.logger.debug("Successfully got token: {0}, expires in: {1}".format(token, expires_in))
-        self.token = token
-        return token
+        return body['data']
+
 
     def get_activities(self, start_date, end_date, offset = 1):
         """ Get the list of activity IDs for this user. """
@@ -159,3 +189,9 @@ class NikePlus:
         self.logger.debug("get_activities: received response body: {0}".format(pprint.pformat(body)))
 
         return body
+
+class LoginError(Exception):
+    def __init__(self, error):
+        self.error = error
+    def __str__(self):
+        return str(self.error[0]['message'])
